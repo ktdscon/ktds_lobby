@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lobby-devserver",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["_devserver.js"],
+      "port": 5588
+    }
+  ]
+}

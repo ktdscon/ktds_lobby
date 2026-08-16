@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(py --version)",
+      "PowerShell(node --version)",
+      "WebSearch",
+      "Bash(mkdir -p \"/d/컨소시엄/20260815_lobby/assets\" && cp \"/c/Users/LG/Downloads/ChatGPT Image 2026년 8월 15일 오후 08_30_42.png\" \"/d/컨소시엄/20260815_lobby/assets/floor_plan_2f.png\" && ls -la \"/d/컨소시엄/20260815_lobby/assets/\")",
+      "Bash(node -e ' *)",
+      "Bash(cp \"img 02.png\" \"assets/floor_plan_2f.png\")",
+      "Bash(node --check \"C:/Users/LG/AppData/Local/Temp/claude/D-------20260815-lobby/1bf9f0c8-2a4c-40db-9e9f-daf2a2a870cc/scratchpad/_script0.js\")",
+      "Bash(git --version)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}
