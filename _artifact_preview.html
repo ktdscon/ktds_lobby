@@ -316,6 +316,19 @@ button{font-family:inherit;}
 .btn-ghost{background:var(--panel);color:var(--text);border:1px solid var(--line-strong);}
 .btn-row{display:flex;gap:10px;flex-wrap:wrap;}
 .hint{font-size:12.5px;color:var(--text-faint);line-height:1.6;}
+.paste-steps{display:flex;gap:12px;flex-wrap:wrap;}
+.paste-step{
+  display:flex;align-items:center;gap:8px;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:12px;padding:10px 16px;font-size:13.5px;color:var(--text-dim);flex:1;min-width:180px;
+}
+.paste-step .step-num{
+  width:22px;height:22px;border-radius:50%;background:var(--red);color:#fff;font-size:12px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.publish-banner{
+  background:var(--cat-g-soft);border:1px solid rgba(76,122,63,.3);color:var(--cat-g);
+  border-radius:12px;padding:14px 18px;font-size:15px;font-weight:700;text-align:center;
+}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;color:#fff;}
 
 /* review week board */
@@ -332,7 +345,7 @@ button{font-family:inherit;}
 /* 일정 수정 탭 */
 .edit-rows{display:flex;flex-direction:column;gap:8px;}
 .edit-row{
-  display:grid;grid-template-columns:78px 1fr 150px 88px 34px;gap:8px;align-items:center;
+  display:grid;grid-template-columns:132px 78px 1fr 150px 88px 34px;gap:8px;align-items:center;
 }
 .edit-row select, .edit-row input{
   background:var(--panel);border:1px solid var(--line-strong);border-radius:8px;
@@ -510,13 +523,18 @@ button{font-family:inherit;}
     </div>
 
     <div class="tab-panel" id="tabPaste">
-      <div class="hint">HRCMS "강의장 스케쥴" 화면에서 달력 전체(월 헤더 포함)를 그대로 복사해서 아래에 붙여넣으세요. 자동으로 주차별로 인식합니다.</div>
+      <div class="paste-steps">
+        <div class="paste-step"><span class="step-num">1</span>HRCMS "강의장 스케쥴"에서 달력 전체 복사</div>
+        <div class="paste-step"><span class="step-num">2</span>아래에 붙여넣기 (Ctrl+V)</div>
+        <div class="paste-step"><span class="step-num">3</span>버튼 한 번이면 끝!</div>
+      </div>
       <div class="field-row" style="flex:1;">
         <textarea id="pasteArea" style="flex:1;min-height:320px;" placeholder="여기에 붙여넣기 (Ctrl+V)"></textarea>
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary" id="parseBtn">자동 인식하기</button>
+        <button class="btn btn-primary" id="parseBtn">붙여넣은 일정 반영하기</button>
       </div>
+      <div class="publish-banner" id="publishBanner" style="display:none;"></div>
       <div class="hint" id="parseResultHint"></div>
     </div>
 
@@ -540,11 +558,11 @@ button{font-family:inherit;}
         <label>수정할 날짜</label>
         <input type="date" id="editDateInput">
       </div>
-      <div class="hint">오타 수정, 강의실/제목 변경, 항목 삭제·추가를 바로 할 수 있습니다. 저장하면 해당 날짜에만 즉시 반영됩니다 (Apps Script 연동 시 서버에도 반영).</div>
+      <div class="hint">오타 수정, 강의실/제목/시간(주간·야간) 변경, 항목 삭제·추가를 바로 할 수 있습니다. 날짜를 바꾸면 그 날짜로 이동합니다. "수정 반영하기"를 누르면 바뀐 날짜들에 즉시 반영됩니다 (Apps Script 연동 시 서버에도 반영).</div>
       <div id="editRows" class="edit-rows"></div>
       <div class="btn-row">
         <button class="btn btn-ghost" id="addEditRowBtn">+ 항목 추가</button>
-        <button class="btn btn-primary" id="saveEditBtn">이 날짜 저장</button>
+        <button class="btn btn-primary" id="saveEditBtn">수정 반영하기</button>
         <span class="hint" id="editSaveHint"></span>
       </div>
     </div>
@@ -1284,6 +1302,8 @@ document.getElementById('parseBtn').addEventListener('click', async ()=>{
   const text = document.getElementById('pasteArea').value;
   const result = parseCalendarPaste(text);
   const hint = document.getElementById('parseResultHint');
+  const banner = document.getElementById('publishBanner');
+  banner.style.display = 'none';
   if(result.error){ hint.textContent = '⚠️ '+result.error; return; }
   parsedWeeks = result.weeks;
   reviewWeekIdx = 0;
@@ -1292,9 +1312,11 @@ document.getElementById('parseBtn').addEventListener('click', async ()=>{
 
   if(!hasUnassigned){
     // 요일까지 전부 자동 인식된 경우 - 검토 없이 바로 반영
-    hint.textContent = `${result.year}년 ${result.month}월, 총 ${parsedWeeks.length}주 / ${totalEntries}건 인식 완료. 자동 반영 중...`;
-    const summary = await doPublish();
-    hint.textContent = `${result.year}년 ${result.month}월, 총 ${totalEntries}건 자동 반영 완료.` + (summary?` (${summary})`:'');
+    hint.textContent = '';
+    await doPublish();
+    document.getElementById('pasteArea').value = '';
+    banner.textContent = `✅ ${result.year}년 ${result.month}월 일정 ${totalEntries}건 반영 완료!`;
+    banner.style.display = 'block';
     toast('붙여넣은 일정이 바로 반영되었습니다');
   } else {
     hint.textContent = `${result.year}년 ${result.month}월, 총 ${parsedWeeks.length}주 / ${totalEntries}건 인식 완료. 일부 항목은 요일을 확인할 수 없어 "검토 & 게시" 탭에서 날짜를 확인해주세요.`;
@@ -1428,11 +1450,12 @@ async function publishBulk(daysMap){
 }
 
 /* ================= 일정 수정 (오타·오인식 직접 수정) ================= */
-function buildEditRow(en){
+function buildEditRow(en, dateStr){
   en = en || {room:'201', group:'', title:'', session:''};
   const row = document.createElement('div');
   row.className = 'edit-row';
   row.innerHTML = `
+    <input class="e-date" type="date" value="${dateStr||''}" title="날짜를 바꾸면 그 날짜로 이동합니다">
     <select class="e-room">${ALL_ROOMS.map(r=>`<option value="${r}"${r===en.room?' selected':''}>${r}</option>`).join('')}</select>
     <input class="e-title" type="text" placeholder="과정명" value="${escapeHtml(en.title||'')}">
     <input class="e-group" type="text" placeholder="담당/소속" value="${escapeHtml(en.group||'')}">
@@ -1451,13 +1474,13 @@ function renderEditRows(dateStr){
     wrap.innerHTML = '<div class="hint">이 날짜에는 등록된 일정이 없습니다. "+ 항목 추가"로 새로 등록하세요.</div>';
     return;
   }
-  items.forEach(en=> wrap.appendChild(buildEditRow(en)));
+  items.forEach(en=> wrap.appendChild(buildEditRow(en, dateStr)));
 }
 
 document.getElementById('addEditRowBtn').addEventListener('click', ()=>{
   const wrap = document.getElementById('editRows');
   if(wrap.querySelector('.hint')) wrap.innerHTML = '';
-  wrap.appendChild(buildEditRow());
+  wrap.appendChild(buildEditRow(null, document.getElementById('editDateInput').value));
 });
 
 document.getElementById('editDateInput').addEventListener('change', (ev)=>{
@@ -1468,36 +1491,40 @@ document.getElementById('saveEditBtn').addEventListener('click', async ()=>{
   const dateStr = document.getElementById('editDateInput').value;
   const hintEl = document.getElementById('editSaveHint');
   if(!dateStr){ toast('날짜를 선택하세요'); return; }
-  const items = Array.from(document.querySelectorAll('#editRows .edit-row')).map(row=>({
-    room: row.querySelector('.e-room').value,
-    title: row.querySelector('.e-title').value.trim(),
-    group: row.querySelector('.e-group').value.trim(),
-    session: row.querySelector('.e-session').value
-  })).filter(it=>it.title || it.group);
 
+  // 행의 날짜를 다른 날짜로 바꾸면, 그 날짜로 이동(해당 날짜의 기존 일정에 추가)시킨다
+  const days = { [dateStr]: [] };
+  Array.from(document.querySelectorAll('#editRows .edit-row')).forEach(row=>{
+    const item = {
+      room: row.querySelector('.e-room').value,
+      title: row.querySelector('.e-title').value.trim(),
+      group: row.querySelector('.e-group').value.trim(),
+      session: row.querySelector('.e-session').value
+    };
+    if(!item.title && !item.group) return;
+    const targetDate = row.querySelector('.e-date').value || dateStr;
+    if(!days[targetDate]) days[targetDate] = (targetDate===dateStr) ? [] : getEntries(targetDate);
+    days[targetDate].push(item);
+  });
+  const dateCount = Object.keys(days).length;
+
+  hintEl.textContent = '저장 중...';
   if(settings.apiUrl){
-    hintEl.textContent = '저장 중...';
-    try{
-      const res = await fetch(settings.apiUrl, {
-        method:'POST',
-        body: JSON.stringify({ action:'replaceDate', key: settings.apiKey||'', date: dateStr, items })
-      });
-      const data = await res.json();
-      if(data.ok){
-        applyItemsToSchedule(data.items);
-        hintEl.textContent = `저장 완료: ${items.length}건`;
-        toast('일정이 저장되었습니다');
-      } else {
-        hintEl.textContent = '저장 실패: '+(data.error||'');
-      }
-    }catch(e){ hintEl.textContent = '저장 실패 (네트워크 오류)'; }
+    const ok = await publishBulk(days);
+    hintEl.textContent = ok
+      ? (dateCount>1 ? `저장 완료 (${dateCount}개 날짜에 반영, 날짜 이동 포함)` : '저장 완료')
+      : '저장 실패 - 설정 탭에서 연결을 확인하세요';
+    if(ok) toast('일정이 저장되었습니다');
   } else {
-    schedule.byDate[dateStr] = items;
+    Object.keys(days).forEach(ds=>{ schedule.byDate[ds] = days[ds]; });
     saveSchedule();
     renderAll();
-    hintEl.textContent = `로컬에 저장됨(Apps Script 미설정): ${items.length}건`;
+    hintEl.textContent = dateCount>1
+      ? `로컬에 저장됨(Apps Script 미설정): ${dateCount}개 날짜에 반영`
+      : '로컬에 저장됨(Apps Script 미설정)';
     toast('일정이 저장되었습니다');
   }
+  renderEditRows(dateStr);
 });
 
 /* ================= 초기화 ================= */
