@@ -278,6 +278,19 @@ button{font-family:inherit;}
 }
 #gearBtn:hover{opacity:.9;}
 
+/* 웰컴 영상 오버레이 */
+#welcomeVideoOverlay{
+  position:fixed;inset:0;background:#000;z-index:40;
+  display:none;align-items:center;justify-content:center;cursor:pointer;
+}
+#welcomeVideoOverlay.show{display:flex;}
+#welcomeVideoOverlay video{width:100%;height:100%;object-fit:contain;background:#000;pointer-events:none;}
+#unmuteBtn{
+  position:absolute;right:28px;bottom:28px;padding:14px 22px;border-radius:30px;
+  background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.4);
+  font-size:15px;cursor:pointer;backdrop-filter:blur(6px);display:none;z-index:41;
+}
+
 /* Modal (admin + course detail) */
 .modal-backdrop{
   position:fixed;inset:0;background:rgba(4,5,8,.72);backdrop-filter:blur(4px);
@@ -491,6 +504,7 @@ button{font-family:inherit;}
       <button class="tab-btn" data-tab="tabPaste">붙여넣기</button>
       <button class="tab-btn" data-tab="tabReview">검토 &amp; 게시</button>
       <button class="tab-btn" data-tab="tabEdit">일정 수정</button>
+      <button class="tab-btn" data-tab="tabWelcome">웰컴 영상</button>
     </div>
 
     <div class="tab-panel active" id="tabSettings">
@@ -573,7 +587,34 @@ button{font-family:inherit;}
         <span class="hint" id="editSaveHint"></span>
       </div>
     </div>
+
+    <div class="tab-panel" id="tabWelcome">
+      <div class="hint">손님 방문 등 특별한 경우, 지정한 기간 동안 이 영상이 전체화면으로 재생되고 기간이 지나면 자동으로 원래 화면으로 돌아갑니다. 영상 파일은 이 PC 브라우저에만 저장되며(다른 노트북에는 안 보임), 화면을 터치하면 바로 원래 화면으로 돌아갈 수 있습니다.</div>
+      <div class="field-row">
+        <label>영상 파일 (mp4)</label>
+        <input type="file" id="welcomeVideoFile" accept="video/*">
+      </div>
+      <div class="field-row" style="max-width:280px;">
+        <label>시작 일시</label>
+        <input type="datetime-local" id="welcomeStartInput">
+      </div>
+      <div class="field-row" style="max-width:280px;">
+        <label>종료 일시</label>
+        <input type="datetime-local" id="welcomeEndInput">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="saveWelcomeBtn">저장</button>
+        <button class="btn btn-ghost" id="testWelcomeBtn">지금 미리보기</button>
+        <button class="btn btn-ghost" id="clearWelcomeBtn">영상 삭제</button>
+      </div>
+      <div class="hint" id="welcomeStatusHint"></div>
+    </div>
   </div>
+</div>
+
+<div id="welcomeVideoOverlay">
+  <video id="welcomeVideoEl" playsinline></video>
+  <button id="unmuteBtn">🔇 소리 켜기</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -721,6 +762,9 @@ let activeZone = 'ALL';
 let parsedWeeks = null;
 let reviewWeekIdx = 0;
 let selectedEntryTempId = null;
+let welcomeVideoActive = false;
+let welcomeVideoObjectUrl = null;
+let welcomeDismissedForWindow = null; // 터치로 건너뛴 경우, 그 종료시각(end)까지는 다시 재생하지 않음
 
 function loadSettings(){
   try{
@@ -775,6 +819,8 @@ function tickClock(){
       renderAll();
     }
   }
+
+  checkWelcomeVideo();
 }
 setInterval(tickClock, 1000); tickClock();
 
@@ -1140,6 +1186,7 @@ function openAdminModal(){
   const editDateStr = isoDate(currentDate);
   document.getElementById('editDateInput').value = editDateStr;
   renderEditRows(editDateStr);
+  renderWelcomeStatus();
   document.getElementById('adminBackdrop').classList.add('show');
 }
 document.getElementById('saveNoticeBtn').addEventListener('click', ()=>{
@@ -1546,6 +1593,157 @@ document.getElementById('saveEditBtn').addEventListener('click', async ()=>{
     toast('일정이 저장되었습니다');
   }
   renderEditRows(dateStr);
+});
+
+/* ================= 웰컴 영상 ================= */
+const WELCOME_DB_NAME = 'ktds_lobby_video_db';
+const WELCOME_STORE = 'video';
+
+function openVideoDB(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(WELCOME_DB_NAME, 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore(WELCOME_STORE); };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function saveWelcomeVideoBlob(blob){
+  const db = await openVideoDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(WELCOME_STORE, 'readwrite');
+    tx.objectStore(WELCOME_STORE).put(blob, 'welcome');
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+async function getWelcomeVideoBlob(){
+  const db = await openVideoDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(WELCOME_STORE, 'readonly');
+    const req = tx.objectStore(WELCOME_STORE).get('welcome');
+    req.onsuccess = ()=> resolve(req.result || null);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function deleteWelcomeVideoBlob(){
+  const db = await openVideoDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(WELCOME_STORE, 'readwrite');
+    tx.objectStore(WELCOME_STORE).delete('welcome');
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+
+function inWelcomeWindow(now){
+  const w = settings.welcomeVideo;
+  if(!w || !w.start || !w.end) return false;
+  return now >= new Date(w.start) && now <= new Date(w.end);
+}
+
+async function checkWelcomeVideo(){
+  const now = new Date();
+  const w = settings.welcomeVideo;
+  const shouldShow = inWelcomeWindow(now) && !(w && w.end === welcomeDismissedForWindow);
+  if(shouldShow && !welcomeVideoActive){
+    const blob = await getWelcomeVideoBlob();
+    if(blob) showWelcomeVideo(blob);
+  } else if(!shouldShow && welcomeVideoActive){
+    hideWelcomeVideo();
+  }
+}
+
+function showWelcomeVideo(blob){
+  welcomeVideoActive = true;
+  const overlay = document.getElementById('welcomeVideoOverlay');
+  const videoEl = document.getElementById('welcomeVideoEl');
+  const unmuteBtn = document.getElementById('unmuteBtn');
+  if(welcomeVideoObjectUrl) URL.revokeObjectURL(welcomeVideoObjectUrl);
+  welcomeVideoObjectUrl = URL.createObjectURL(blob);
+  videoEl.src = welcomeVideoObjectUrl;
+  videoEl.loop = true;
+  videoEl.muted = false;
+  unmuteBtn.style.display = 'none';
+  overlay.classList.add('show');
+  videoEl.play().catch(()=>{
+    videoEl.muted = true;
+    videoEl.play().catch(()=>{});
+    unmuteBtn.style.display = 'block';
+  });
+}
+function hideWelcomeVideo(){
+  welcomeVideoActive = false;
+  const overlay = document.getElementById('welcomeVideoOverlay');
+  const videoEl = document.getElementById('welcomeVideoEl');
+  overlay.classList.remove('show');
+  videoEl.pause();
+  videoEl.removeAttribute('src');
+  videoEl.load();
+  if(welcomeVideoObjectUrl){ URL.revokeObjectURL(welcomeVideoObjectUrl); welcomeVideoObjectUrl = null; }
+  document.getElementById('unmuteBtn').style.display = 'none';
+}
+document.getElementById('unmuteBtn').addEventListener('click', (ev)=>{
+  ev.stopPropagation();
+  const videoEl = document.getElementById('welcomeVideoEl');
+  videoEl.muted = false;
+  videoEl.play().catch(()=>{});
+  document.getElementById('unmuteBtn').style.display = 'none';
+});
+document.getElementById('welcomeVideoOverlay').addEventListener('click', ()=>{
+  if(settings.welcomeVideo) welcomeDismissedForWindow = settings.welcomeVideo.end;
+  hideWelcomeVideo();
+});
+
+function renderWelcomeStatus(){
+  const hintEl = document.getElementById('welcomeStatusHint');
+  if(!hintEl) return;
+  const w = settings.welcomeVideo;
+  if(w && w.start && w.end){
+    document.getElementById('welcomeStartInput').value = w.start;
+    document.getElementById('welcomeEndInput').value = w.end;
+    hintEl.textContent = `설정됨: ${w.start.replace('T',' ')} ~ ${w.end.replace('T',' ')}`;
+  } else {
+    hintEl.textContent = '설정된 기간이 없습니다';
+  }
+}
+
+document.getElementById('saveWelcomeBtn').addEventListener('click', async ()=>{
+  const fileInput = document.getElementById('welcomeVideoFile');
+  const start = document.getElementById('welcomeStartInput').value;
+  const end = document.getElementById('welcomeEndInput').value;
+  const hintEl = document.getElementById('welcomeStatusHint');
+  if(!start || !end){ toast('시작/종료 일시를 입력하세요'); return; }
+  if(new Date(end) <= new Date(start)){ toast('종료 일시가 시작 일시보다 늦어야 합니다'); return; }
+  try{
+    if(fileInput.files && fileInput.files[0]){
+      hintEl.textContent = '영상 저장 중...';
+      await saveWelcomeVideoBlob(fileInput.files[0]);
+    }
+    settings.welcomeVideo = { start, end };
+    saveSettings();
+    welcomeDismissedForWindow = null;
+    hintEl.textContent = `저장 완료 (${start.replace('T',' ')} ~ ${end.replace('T',' ')})`;
+    toast('웰컴 영상 설정이 저장되었습니다');
+    checkWelcomeVideo();
+  }catch(e){
+    hintEl.textContent = '저장 실패: '+e.message;
+  }
+});
+document.getElementById('clearWelcomeBtn').addEventListener('click', async ()=>{
+  await deleteWelcomeVideoBlob();
+  delete settings.welcomeVideo;
+  saveSettings();
+  hideWelcomeVideo();
+  document.getElementById('welcomeVideoFile').value = '';
+  document.getElementById('welcomeStartInput').value = '';
+  document.getElementById('welcomeEndInput').value = '';
+  document.getElementById('welcomeStatusHint').textContent = '영상 및 설정이 삭제되었습니다';
+  toast('삭제되었습니다');
+});
+document.getElementById('testWelcomeBtn').addEventListener('click', async ()=>{
+  const blob = await getWelcomeVideoBlob();
+  if(!blob){ toast('먼저 영상 파일을 저장하세요'); return; }
+  showWelcomeVideo(blob);
 });
 
 /* ================= 초기화 ================= */
