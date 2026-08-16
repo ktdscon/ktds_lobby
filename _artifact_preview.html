@@ -763,9 +763,10 @@ function getEntries(dateStr){ return (schedule.byDate[dateStr]||[]).slice(); }
 
 const ALL_ROOMS = ['201','202','203','204','205','206','207','208','209','210','211','212'];
 
-function detectSession(en, idx, total){
-  if(en.session) return en.session;
-  return total>1 ? `${idx+1}타임` : null;
+function detectSession(en){
+  // 보통 주간 진행이 기본이라 "주간"은 배지로 표시하지 않고, 야간(또는 오전/오후 등 예외적인 시간대)만 표시
+  if(!en.session || en.session==='주간') return null;
+  return en.session;
 }
 
 function renderCourseList(){
@@ -812,7 +813,7 @@ function renderCourseList(){
     }
     roomEntries.forEach((en,idx)=>{
       shownCount++;
-      const session = detectSession(en, idx, roomEntries.length);
+      const session = detectSession(en);
       const row = document.createElement('div');
       row.className = 'course-row cat-'+cat;
       row.dataset.room = en.room;
