@@ -14,7 +14,9 @@
  */
 
 var SHEET_NAME = 'Schedule';
-var SHARED_KEY = 'ktds-lobby-2026'; // 반드시 원하는 값으로 변경해서 사용하세요
+// 이 파일은 공개(Public) GitHub 저장소에도 올라갑니다. 아래 값을 절대 실제 사용할 키로 커밋하지 말고,
+// Apps Script 편집기(script.google.com)에 붙여넣은 뒤 거기서만 실제 키로 바꿔서 배포하세요.
+var SHARED_KEY = 'CHANGE_ME_BEFORE_DEPLOY';
 
 function doGet(e) {
   var action = (e.parameter.action || 'list');
