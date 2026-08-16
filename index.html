@@ -839,7 +839,7 @@ function syncRowHeight(){
   if(!headEl) return;
   const headH = headEl.getBoundingClientRect().height;
   const availH = list.clientHeight - headH;
-  const rowH = Math.max(30, Math.min(60, Math.floor(availH / ALL_ROOMS.length)));
+  const rowH = Math.max(30, Math.floor(availH / ALL_ROOMS.length));
   list.style.setProperty('--row-h', rowH+'px');
 }
 
