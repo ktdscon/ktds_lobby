@@ -10,7 +10,9 @@
       "Bash(node --check \"C:/Users/LG/AppData/Local/Temp/claude/D-------20260815-lobby/1bf9f0c8-2a4c-40db-9e9f-daf2a2a870cc/scratchpad/_script0.js\")",
       "Bash(git --version)",
       "Bash(git init *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git config *)"
     ]
   }
 }
