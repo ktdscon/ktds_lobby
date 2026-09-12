@@ -58,6 +58,9 @@ function doPost(e) {
     } else if (action === 'deleteDate') {
       replaceDate(body.date, []);
     } else {
+      // 카카오 알림(KakaoReminder.gs)이 같은 프로젝트에 있으면 그쪽 action도 처리하게 넘긴다
+      var handled = (typeof reminderDoPost_ === 'function') ? reminderDoPost_(body) : null;
+      if (handled) return respond(handled);
       return respond({ ok: false, error: 'unknown action: ' + action });
     }
   } catch (err) {

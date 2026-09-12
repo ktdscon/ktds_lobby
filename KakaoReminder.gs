@@ -517,6 +517,165 @@ function todaysLobbySchedule_(todayStr) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 주간 보고 (매주 월요일 아침)
+// ---------------------------------------------------------------------------
+
+/** 그 날짜가 속한 주의 월요일~일요일 */
+function weekRange_(d) {
+  var dow = d.getDay();                       // 0=일 … 6=토
+  var mon = addDays_(d, dow === 0 ? -6 : 1 - dow);
+  return { start: mon, end: addDays_(mon, 6) };
+}
+
+function mdLabel_(d) {
+  return (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+/** 'yyyy-MM-dd' → 'M/d' (mdLabel_과 표기를 맞춘다) */
+function mdFromYmd_(ymd) {
+  var p = String(ymd).split('-');
+  return Number(p[1]) + '/' + Number(p[2]);
+}
+
+/** 반복 항목이 start~end 사이 어느 날에 걸리는지 (없으면 null) */
+function firstRepeatHit_(rule, start, end) {
+  for (var i = 0; i < 7; i++) {
+    var d = addDays_(start, i);
+    if (d > end) break;
+    if (repeatMatches_(rule, d)) return d;
+  }
+  return null;
+}
+
+/**
+ * 주간 보고 텍스트. 보고할 게 하나도 없으면 ''.
+ * 구성: ① 밀린 일(날짜 지났는데 완료 안 됨) ② 이번 주 할 일 ③ 강의장 운영 현황
+ */
+function buildWeeklyReport_(target) {
+  var today = target || new Date();
+  var todayStr = ymd_(today);
+  var range = weekRange_(today);
+  var startStr = ymd_(range.start);
+  var endStr = ymd_(range.end);
+
+  var overdue = [];
+  var thisWeek = [];   // {date, label, item}
+
+  readReminders_().forEach(function (item) {
+    if (item.done) return;
+
+    if (item.date) {
+      if (item.date < todayStr) {
+        overdue.push(item);
+      } else if (item.date >= startStr && item.date <= endStr) {
+        thisWeek.push({ date: item.date, label: mdFromYmd_(item.date), item: item });
+      }
+      return;
+    }
+    if (item.repeat) {
+      var hit = firstRepeatHit_(item.repeat, range.start, range.end);
+      if (hit) thisWeek.push({ date: ymd_(hit), label: mdLabel_(hit), item: item });
+    }
+  });
+
+  var lobby = lobbyWeeklyStats_(range);
+
+  if (!overdue.length && !thisWeek.length && !lobby.length) return '';
+
+  var parts = ['📋 주간 보고 (' + mdLabel_(range.start) + '~' + mdLabel_(range.end) + ')'];
+
+  if (overdue.length) {
+    overdue.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    parts.push('', '🔴 밀린 일 ' + overdue.length + '건');
+    overdue.forEach(function (it) {
+      parts.push('· ' + it.title + ' (' + mdFromYmd_(it.date) + ' 지남)');
+    });
+  }
+
+  if (thisWeek.length) {
+    thisWeek.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    parts.push('', '📌 이번 주 할 일 ' + thisWeek.length + '건');
+    thisWeek.forEach(function (w) {
+      var line = '· ' + w.label + '(' + DOW_KO[new Date(w.date.replace(/-/g, '/')).getDay()] + ') ' + w.item.title;
+      if (w.item.time) line += ' ' + w.item.time;
+      parts.push(line);
+    });
+  } else if (!overdue.length) {
+    parts.push('', '이번 주 등록된 할 일은 없습니다.');
+  }
+
+  if (lobby.length) {
+    parts.push('', '📚 강의장 운영');
+    lobby.forEach(function (line) { parts.push(line); });
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * 로비 Schedule 탭 기준 이번 주/다음 주 현황.
+ * 데이터가 통째로 빠진 날을 잡아내는 게 핵심 — 10~12월은 아직 "(테스트)" 임시 데이터라
+ * 실제 데이터로 덮어써야 하는 상태다 (인수인계.md 참고).
+ */
+function lobbyWeeklyStats_(range) {
+  if (prop_('INCLUDE_LOBBY_SCHEDULE', '0') !== '1') return [];
+  try {
+    if (typeof SHEET_NAME === 'undefined' || typeof readAll !== 'function') return [];
+    if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME)) return [];
+
+    var items = readAll();
+    var byDate = {};
+    var testFlag = {};
+    items.forEach(function (it) {
+      byDate[it.date] = (byDate[it.date] || 0) + 1;
+      if (/\(테스트\)/.test(it.title || '')) testFlag[it.date] = true;
+    });
+
+    var thisCount = 0, nextCount = 0, empty = [], test = [];
+    for (var i = 0; i < 14; i++) {
+      var d = addDays_(range.start, i);
+      var ds = ymd_(d);
+      var n = byDate[ds] || 0;
+      if (testFlag[ds]) test.push(mdLabel_(d));
+      if (i < 7) {
+        thisCount += n;
+        // 다음 주 공백은 아직 데이터를 안 넣었을 수 있어 경고하지 않는다 (노이즈)
+        var dow = d.getDay();
+        if (n === 0 && dow >= 1 && dow <= 5) empty.push(mdLabel_(d) + '(' + DOW_KO[dow] + ')');
+      } else {
+        nextCount += n;
+      }
+    }
+
+    var out = ['· 이번 주 ' + thisCount + '건 / 다음 주 ' + nextCount + '건'];
+    if (empty.length) out.push('· ⚠️ 평일인데 일정 없음: ' + empty.join(', '));
+    if (test.length) out.push('· ⚠️ "(테스트)" 임시 데이터 남아있음: ' + test.join(', '));
+    return out;
+  } catch (err) {
+    return [];
+  }
+}
+
+/** 트리거가 매주 월요일 아침 실행하는 함수 */
+function sendWeeklyReport() {
+  var text = buildWeeklyReport_(new Date());
+  if (!text) {
+    Logger.log('이번 주는 보고할 내용이 없어 전송을 건너뜁니다.');
+    return;
+  }
+  sendKakaoMemo_(text);
+  props_().setProperty('LAST_WEEKLY_SENT', new Date().toISOString());
+  Logger.log('주간 보고 전송 완료:\n' + text);
+}
+
+/** 실제 전송 없이 이번 주 보고 내용만 확인 */
+function previewWeeklyReport() {
+  var text = buildWeeklyReport_(new Date());
+  Logger.log(text || '(이번 주는 보고할 내용이 없습니다)');
+  return text;
+}
+
 /** 트리거가 매일 아침 실행하는 함수 */
 function sendDailyBriefing() {
   var text = buildBriefing_(new Date());
@@ -559,6 +718,48 @@ function installDailyTrigger() {
     .create();
   Logger.log('매일 ' + hour + '시(' + tz_() + ') 알림 트리거를 설치했습니다.'
     + '\n※ 구글 트리거는 정확히 정시가 아니라 해당 시간대(예: 8~9시) 안에서 실행됩니다.');
+}
+
+/** 매주 월요일 아침 주간 보고 켜기 */
+function installWeeklyTrigger() {
+  removeWeeklyTrigger();
+  var hour = parseInt(prop_('WEEKLY_HOUR', prop_('BRIEF_HOUR', '8')), 10);
+  ScriptApp.newTrigger('sendWeeklyReport')
+    .timeBased()
+    .onWeekDay(ScriptApp.WeekDay.MONDAY)
+    .atHour(hour)
+    .inTimezone(tz_())
+    .create();
+  Logger.log('매주 월요일 ' + hour + '시(' + tz_() + ') 주간 보고 트리거를 설치했습니다.');
+}
+
+/** 주간 보고 끄기 */
+function removeWeeklyTrigger() {
+  var n = 0;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'sendWeeklyReport') { ScriptApp.deleteTrigger(t); n++; }
+  });
+  if (n) Logger.log('기존 주간 트리거 ' + n + '개를 제거했습니다.');
+}
+
+/** 주간 보고 요일/시각 변경. 예: setWeeklySchedule('금', 17) */
+function setWeeklySchedule(dayKo, hour) {
+  var map = { '일': 'SUNDAY', '월': 'MONDAY', '화': 'TUESDAY', '수': 'WEDNESDAY',
+              '목': 'THURSDAY', '금': 'FRIDAY', '토': 'SATURDAY' };
+  var key = map[String(dayKo || '').charAt(0)];
+  if (!key) throw new Error('요일은 월~일 중 하나로 넣으세요. 예: setWeeklySchedule("금", 17)');
+  var h = parseInt(hour, 10);
+  if (isNaN(h) || h < 0 || h > 23) throw new Error('시각은 0~23 사이 숫자로 넣으세요.');
+
+  removeWeeklyTrigger();
+  props_().setProperty('WEEKLY_HOUR', String(h));
+  ScriptApp.newTrigger('sendWeeklyReport')
+    .timeBased()
+    .onWeekDay(ScriptApp.WeekDay[key])
+    .atHour(h)
+    .inTimezone(tz_())
+    .create();
+  Logger.log('주간 보고를 매주 ' + dayKo + '요일 ' + h + '시로 설정했습니다.');
 }
 
 /** 매일 아침 알림 끄기 */
@@ -615,6 +816,35 @@ function reminderDoGet_(e) {
       String(p.note || '').trim()
     ]);
     return { ok: true, added: title };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+/**
+ * AppsScript_Code.gs 의 doPost 가 모르는 action을 여기로 넘겨준다.
+ * (doPost 는 이미 SHARED_KEY 를 검사한 뒤에 호출하므로 여기서 다시 검사하지 않는다)
+ *
+ * 바깥 시스템(Claude Code 주간 보고, 스크립트, 폰 단축어 등)이 아무 텍스트나
+ * 내 카카오톡으로 밀어넣는 통로:
+ *   POST <웹앱URL>  {"key":"<SHARED_KEY>", "action":"sendKakao", "text":"보낼 내용"}
+ *   POST <웹앱URL>  {"key":"<SHARED_KEY>", "action":"weeklyNow"}
+ * 처리할 수 없는 action이면 null을 돌려준다.
+ */
+function reminderDoPost_(body) {
+  var action = body && body.action ? body.action : '';
+  if (action !== 'sendKakao' && action !== 'weeklyNow') return null;
+
+  try {
+    if (action === 'weeklyNow') {
+      var report = buildWeeklyReport_(new Date());
+      if (!report) return { ok: true, sent: false, message: '보고할 내용이 없습니다' };
+      return { ok: true, sent: true, chunks: sendKakaoMemo_(report) };
+    }
+
+    var text = String(body.text || '').trim();
+    if (!text) return { ok: false, error: 'text가 비어 있습니다' };
+    return { ok: true, sent: true, chunks: sendKakaoMemo_(text) };
   } catch (err) {
     return { ok: false, error: String(err) };
   }

@@ -115,6 +115,54 @@ D-30부터 네 번 찔러줍니다.
 
 행 순서는 상관없습니다. 아무 데나 추가하면 됩니다.
 
+## 주간 보고 (매주 월요일 아침)
+
+매일 아침 알림과 **별개로** 켜고 끕니다. `installWeeklyTrigger` 함수를 한 번 실행하면 끝입니다.
+
+```
+📋 주간 보고 (9/14~9/20)
+
+🔴 밀린 일 1건
+· 와일드스미스 그림책 원화展 (9/13 지남)
+
+📌 이번 주 할 일 2건
+· 9/14(월) 사내 대부 대출 신청
+· 9/19(토) 웨인 티보 전 관람 시작 (~12/18)
+
+📚 강의장 운영
+· 이번 주 4건 / 다음 주 1건
+· ⚠️ 평일인데 일정 없음: 9/17(목), 9/18(금)
+· ⚠️ "(테스트)" 임시 데이터 남아있음: 9/22
+```
+
+- **밀린 일** = 날짜가 지났는데 완료 표시가 없는 항목. 매일 알림에는 안 나오고 주간 보고에만 나옵니다
+- **강의장 운영** 항목은 `setIncludeLobbySchedule(true)` 를 켠 경우에만 붙습니다.
+  평일인데 강의가 하나도 없는 날과, 아직 `(테스트)` 임시 데이터가 남아있는 날을 잡아줍니다
+  (이번 주 + 다음 주 2주치를 보므로 미리 고칠 시간이 있습니다)
+- 요일·시각을 바꾸려면 `setWeeklySchedule('금', 17)` 처럼 실행하세요 (매주 금요일 5시)
+
+## 바깥에서 카톡으로 글 밀어넣기 (Claude Code 주간 보고 등)
+
+Apps Script 웹앱에 POST를 보내면 **아무 텍스트나** 내 카카오톡으로 갑니다.
+Claude Code가 만든 주간 보고, 다른 스크립트의 알림 등을 여기로 보내면 됩니다.
+
+```bash
+curl -L -X POST '<웹앱URL>' \
+  -H 'Content-Type: application/json' \
+  -d '{"key":"<SHARED_KEY>","action":"sendKakao","text":"이번 주 작업 요약\n· ...\n· ..."}'
+```
+
+```bash
+# 시트 기반 주간 보고를 지금 당장 받기
+curl -L -X POST '<웹앱URL>' -H 'Content-Type: application/json' \
+  -d '{"key":"<SHARED_KEY>","action":"weeklyNow"}'
+```
+
+`-L` 은 필수입니다 (Apps Script 웹앱이 302로 리디렉션합니다).
+200자가 넘으면 자동으로 나눠서 갑니다.
+
+⚠️ 이 요청에는 `SHARED_KEY` 가 들어갑니다. **저장소나 공개된 곳에 적지 마세요.**
+
 ## 자주 쓰는 함수
 
 | 함수 | 하는 일 |
@@ -126,7 +174,11 @@ D-30부터 네 번 찔러줍니다.
 | `setBriefHour(7)` | 발송 시각 변경 (0~23). 실행 후 `installDailyTrigger` 를 **다시** 실행해야 적용 |
 | `setIncludeLobbySchedule(true)` | 아침 메시지에 그날 강의장 일정(`Schedule` 탭)도 함께 넣기 |
 | `setBriefLink('https://...')` | 카톡 메시지 아래 버튼이 열 주소 변경 (기본: 로비 안내 화면) |
-| `installDailyTrigger` / `removeDailyTrigger` | 매일 알림 켜기 / 끄기 |
+| `installDailyTrigger` / `removeDailyTrigger` | 매일 아침 알림 켜기 / 끄기 |
+| `previewWeeklyReport` | **보내지 않고** 이번 주 주간 보고 내용만 확인 |
+| `sendWeeklyReport` | 지금 당장 주간 보고 발송 |
+| `installWeeklyTrigger` / `removeWeeklyTrigger` | 주간 보고 켜기 / 끄기 (기본 월요일 아침) |
+| `setWeeklySchedule('금', 17)` | 주간 보고 요일·시각 변경 |
 
 ## 폰에서 바로 할 일 추가하기 (선택)
 

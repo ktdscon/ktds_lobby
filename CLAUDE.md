@@ -56,7 +56,9 @@
 - 카카오 text 템플릿은 **200자 제한**이 있어 `chunkText_()`로 줄 단위 분할 후 여러 건 전송
 - `AppsScript_Code.gs`의 `doGet`이 모르는 action을 `reminderDoGet_(e)`로 넘긴다 (같은 프로젝트에 파일이 있을 때만 — `typeof` 가드). 폰에서 `?action=addReminder&...`로 할 일 추가, `?action=briefNow`로 즉시 발송
 - `KakaoReminder.gs`는 `AppsScript_Code.gs` 없이도 동작한다 (`SHEET_NAME`/`readAll`/`SHARED_KEY` 참조는 전부 `typeof` 가드)
-- 로직 검증은 Apps Script 전역(`SpreadsheetApp`/`Utilities`/`PropertiesService`)을 스텁으로 대체한 node 하니스로 했다 — 반복 규칙·미리알림·200자 분할·브리핑 문구 35개 케이스
+- **주간 보고**(`sendWeeklyReport`, 매주 월요일 아침)는 매일 알림과 별개 트리거다. 밀린 일(날짜 지남+미완료) / 이번 주 할 일 / 강의장 운영 현황(평일 공백일·`(테스트)` 잔존 데이터, 2주치) 세 덩어리
+- **바깥에서 카톡 밀어넣기**: `POST {key, action:'sendKakao', text}` → 아무 텍스트나 내 카톡으로. Claude Code가 만든 보고서를 보낼 때 쓴다. `doPost`가 모르는 action을 `reminderDoPost_(body)`로 넘긴다 (SHARED_KEY 검사는 doPost가 이미 함)
+- 로직 검증은 Apps Script 전역(`SpreadsheetApp`/`Utilities`/`PropertiesService`)을 스텁으로 대체한 node 하니스로 했다 — 일일 브리핑 52 + 시드 일정 12 + 주간 보고 17 케이스
 
 ## 로컬 개발/테스트
 
