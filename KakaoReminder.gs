@@ -237,12 +237,34 @@ function getReminderSheet() {
     sheet.setFrozenRows(1);
     sheet.setColumnWidth(2, 320);
     sheet.getRange('A1:G1').setFontWeight('bold');
-    // 사용법 예시 몇 줄을 미리 넣어둔다 (지워도 됨)
-    sheet.appendRow(['2026-09-14', '사내 대부 대출 신청', '', '3,1', '', '', '인사포털에서 신청']);
-    sheet.appendRow(['', '주간보고 제출', '17:00', '', '매주 금', '', '']);
-    sheet.appendRow(['', '법인카드 정산', '', '', '매월 25', '', '']);
+    seedReminders_(sheet);
   }
   return sheet;
+}
+
+/**
+ * 시트를 처음 만들 때 들어가는 초기 데이터.
+ * NOL티켓 예매 내역(2026-09-12 기준)에서 옮겨 적은 실제 일정 + 사용법 예시.
+ * 필요 없으면 그냥 지우면 된다.
+ */
+function seedReminders_(sheet) {
+  var rows = [
+    // --- 예매해둔 공연/전시 (NOL티켓) ---
+    ['2026-09-13', '와일드스미스 그림책 원화展 — 오늘이 마지막 날', '', '',
+      '', '', '예술의전당 서예박물관 / 예매번호 T2983174670'],
+    ['2026-09-19', '웨인 티보 전 관람 시작 (~12/18)', '', '',
+      '', '', 'DDP 뮤지엄 / 예매번호 T3019478430'],
+    ['2026-10-24', '이자람 판소리 \'눈, 눈, 눈\' 관람', '16:00', '7,3,1',
+      '', '', 'LG아트센터 서울 LG SIGNATURE 홀 / 예매번호 3314647816'],
+    ['2026-12-18', '웨인 티보 전 관람 마감', '', '30,14,7,1',
+      '', '', 'DDP 뮤지엄 / 예매번호 T3019478430'],
+    // --- 해야 할 일 ---
+    ['2026-09-14', '사내 대부 대출 신청', '', '3,1', '', '', '인사포털에서 신청'],
+    // --- 작성법 예시. '완료' 칸에 표시가 있어서 알림은 오지 않는다. 필요 없으면 삭제 ---
+    ['', '(예시) 매주 금요일 반복 항목은 이렇게', '17:00', '', '매주 금', '✔',
+      '완료 칸을 비우면 그때부터 알림이 옵니다']
+  ];
+  rows.forEach(function (r) { sheet.appendRow(r); });
 }
 
 function ymd_(d) {
@@ -311,10 +333,17 @@ function readReminders_() {
   return out;
 }
 
+/**
+ * '완료' 칸 판정. 사람마다 ✔ / O / v / 완료 / done 등 아무거나 적기 때문에,
+ * 비어있지 않으면 일단 완료로 보고 "아직 아니다"에 해당하는 표기만 예외로 둔다.
+ */
 function isTruthyCell_(v) {
   if (v === true) return true;
-  var s = String(v || '').trim().toLowerCase();
-  return s === 'true' || s === 'y' || s === 'yes' || s === 'o' || s === '완료' || s === 'x' || s === 'v' || s === '1';
+  if (v === false) return false;
+  var s = String(v == null ? '' : v).trim().toLowerCase();
+  if (!s) return false;
+  var negatives = ['false', 'n', 'no', 'x', '-', '0', '미완료', '아직', '진행중'];
+  return negatives.indexOf(s) === -1;
 }
 
 /** "3,1" → [3,1] / 빈값 → [] */
