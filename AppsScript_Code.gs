@@ -26,6 +26,11 @@ function doGet(e) {
   if (action === 'ping') {
     return respond({ ok: true, pong: true, time: new Date().toISOString() });
   }
+  // 카카오 아침 알림(KakaoReminder.gs)이 같은 프로젝트에 있으면 그쪽 action도 처리하게 넘긴다
+  if (typeof reminderDoGet_ === 'function') {
+    var handled = reminderDoGet_(e);
+    if (handled) return respond(handled);
+  }
   return respond({ ok: false, error: 'unknown action: ' + action });
 }
 

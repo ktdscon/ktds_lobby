@@ -16,6 +16,8 @@
 - **index.html** — 실제 서비스 파일 (단일 파일, 강의장 도면 이미지가 base64로 내장됨)
 - **_artifact_preview.html** — claude.ai 아티팩트 게시용 사본. **index.html을 수정하면 반드시 이 파일도 동일하게 수정할 것** (자동 동기화 안 됨, 수동으로 두 파일 다 고쳐야 함)
 - **AppsScript_Code.gs** — Google Sheet 연동 백엔드 템플릿. `SHARED_KEY`는 항상 플레이스홀더(`CHANGE_ME_BEFORE_DEPLOY`)로만 커밋하고, 실제 값은 Apps Script 편집기에서만 설정한다
+- **KakaoReminder.gs** — 매일 아침 카카오톡("나에게 보내기")으로 그날 할 일을 보내주는 알림 발송기. 같은 Apps Script 프로젝트에 나란히 두면 되고, 시트에 `Reminders` 탭을 자동 생성한다. 로비 안내 화면(index.html)과는 완전히 독립 — 키오스크 화면에는 아무 영향 없음. **키/토큰은 전부 스크립트 속성(Script Properties)에만 저장하고 절대 코드에 적지 않는다**
+- **KAKAO_REMINDER_설정.md** — 위 알림 기능의 설정 절차(카카오 개발자 앱 → OAuth → 트리거)와 시트 작성법
 - **assets/floor_plan_2f.png** — 강의장 위치 원본 이미지 (index.html에도 내장돼 있어 이 파일은 백업용)
 - **_devserver.js** — 로컬 정적 서버 (`node _devserver.js`, port 5588). `.claude/launch.json`에 `lobby-devserver`로 등록되어 있어 preview_start로 바로 띄울 수 있음
 - **SECRETS.local.md** — 실제 배포 URL/키 등 민감정보. `.gitignore`에 등록되어 git에는 절대 안 올라감. 새 세션에서 실배포 정보가 필요하면 이 파일을 확인할 것 (없으면 사용자에게 물어볼 것)
@@ -44,6 +46,17 @@
 - 월별로 한 번씩 반복하면 됨 (8월 화면 붙여넣기→게시, 9월 화면 붙여넣기→게시, ...). 게시는 붙여넣은 내용에 포함된 날짜만 덮어쓰므로 다른 달 데이터는 안전함
 - **일정 수정** 탭에서 개별 항목의 날짜를 바꾸면 그 날짜로 "이동"(원래 날짜에서 삭제 + 새 날짜의 기존 항목에 추가)됨 — 통째로 다시 붙여넣을 필요 없음
 - 자정이 지나면(`tickClock`의 day-rollover 로직) 화면이 "오늘"을 보고 있던 경우에 한해 자동으로 다음 날 일정으로 넘어감 — 관리자가 매일 손댈 필요 없음
+
+## 카카오톡 아침 알림 (개인용, 로비 화면과 무관)
+
+`KakaoReminder.gs` + 구글시트 `Reminders` 탭 + Apps Script 매일 아침 트리거 조합. 사용자가 알림을 설정해두고 안 보는 문제(슬랙/옵시디언/캘린더 알람 무시) 때문에, 그나마 매일 보는 카카오톡으로 보내달라는 요청에서 시작됨.
+
+- 카카오 **"나에게 보내기"** API(`/v2/api/talk/memo/default/send`)만 쓴다 — 본인 대상은 앱 심사·사업자등록 불필요. 친구/단체 발송(알림톡·친구톡)은 심사가 필요해서 쓰지 않음
+- 반복 규칙은 한글 표기를 파싱한다: `매일`/`평일`/`매주 금`/`매월 25`/`매월 말`/`매년 09-15`
+- 카카오 text 템플릿은 **200자 제한**이 있어 `chunkText_()`로 줄 단위 분할 후 여러 건 전송
+- `AppsScript_Code.gs`의 `doGet`이 모르는 action을 `reminderDoGet_(e)`로 넘긴다 (같은 프로젝트에 파일이 있을 때만 — `typeof` 가드). 폰에서 `?action=addReminder&...`로 할 일 추가, `?action=briefNow`로 즉시 발송
+- `KakaoReminder.gs`는 `AppsScript_Code.gs` 없이도 동작한다 (`SHEET_NAME`/`readAll`/`SHARED_KEY` 참조는 전부 `typeof` 가드)
+- 로직 검증은 Apps Script 전역(`SpreadsheetApp`/`Utilities`/`PropertiesService`)을 스텁으로 대체한 node 하니스로 했다 — 반복 규칙·미리알림·200자 분할·브리핑 문구 35개 케이스
 
 ## 로컬 개발/테스트
 
