@@ -252,11 +252,11 @@ function seedReminders_(sheet) {
     // --- 예매해둔 공연/전시 (NOL티켓) ---
     ['2026-09-13', '와일드스미스 그림책 원화展 — 오늘이 마지막 날', '', '',
       '', '', '예술의전당 서예박물관 / 예매번호 T2983174670'],
-    ['2026-09-19', '웨인 티보 전 관람 시작 (~12/18)', '', '',
-      '', '', 'DDP 뮤지엄 / 예매번호 T3019478430'],
     ['2026-10-24', '이자람 판소리 \'눈, 눈, 눈\' 관람', '16:00', '7,3,1',
       '', '', 'LG아트센터 서울 LG SIGNATURE 홀 / 예매번호 3314647816'],
-    ['2026-12-18', '웨인 티보 전 관람 마감', '', '30,14,7,1',
+    // 기간 전시는 "시작일"이 아니라 "마감일"만 걸어둔다. 시작은 놓쳐도 할 게 없고,
+    // 정작 놓치는 건 마감이라 D-30부터 네 번 찔러주게 했다 (9/19부터 관람 가능)
+    ['2026-12-18', '웨인 티보 전 관람 마감 (9/19부터 관람 가능)', '', '30,14,7,1',
       '', '', 'DDP 뮤지엄 / 예매번호 T3019478430'],
     // --- 해야 할 일 ---
     ['2026-09-14', '사내 대부 대출 신청', '', '3,1', '', '', '인사포털에서 신청'],
@@ -423,6 +423,34 @@ function repeatMatches_(rule, d) {
 // 아침 브리핑 만들기
 // ---------------------------------------------------------------------------
 
+// 매일 알림에 밀린 일을 며칠까지 끌고 갈지. 이보다 오래된 건 주간 보고에서만 보인다
+// (석 달 지난 전시를 매일 알려주면 그것 때문에 알림 전체를 안 보게 된다)
+var OVERDUE_DAILY_WINDOW = 14;
+
+/**
+ * 날짜가 지났는데 완료 표시가 없는 항목 (오래된 것부터).
+ * withinDays를 주면 그만큼 이내로 밀린 것만 — 매일 알림용. 생략하면 전부 — 주간 보고용.
+ */
+function overdueItems_(items, todayStr, withinDays) {
+  var floor = withinDays ? ymd_(addDays_(new Date(todayStr.replace(/-/g, '/')), -withinDays)) : null;
+  var out = items.filter(function (it) {
+    if (it.done || !it.date || it.date >= todayStr) return false;
+    return floor ? it.date >= floor : true;
+  });
+  out.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  return out;
+}
+
+/** 밀린 일을 카톡 한 줄로 (최대 max건, 나머지는 "외 N건") */
+function overdueLines_(overdue, max) {
+  var lines = [];
+  overdue.slice(0, max).forEach(function (it) {
+    lines.push('· ' + it.title + ' (' + mdFromYmd_(it.date) + ' 지남)');
+  });
+  if (overdue.length > max) lines.push('· 외 ' + (overdue.length - max) + '건');
+  return lines;
+}
+
 function bullet_(item) {
   var line = '· ' + item.title;
   if (item.time) line += ' (' + item.time + ')';
@@ -438,6 +466,9 @@ function buildBriefing_(target) {
 
   var todays = [];
   var upcoming = [];   // {days, item}
+  // 놓친 일을 다음 주간 보고까지 일주일 내내 아무도 안 알려주면 그대로 묻힌다.
+  // 매일 알림에도 넣되 3건까지만 보여줘서 잔소리가 되지 않게 한다.
+  var overdue = overdueItems_(items, todayStr, OVERDUE_DAILY_WINDOW);
 
   items.forEach(function (item) {
     if (item.done) return;
@@ -466,13 +497,18 @@ function buildBriefing_(target) {
 
   var lobby = prop_('INCLUDE_LOBBY_SCHEDULE', '0') === '1' ? todaysLobbySchedule_(todayStr) : [];
 
-  if (!todays.length && !upcoming.length && !lobby.length) return '';
+  if (!todays.length && !upcoming.length && !overdue.length && !lobby.length) return '';
 
   var parts = [header];
 
   if (todays.length) {
     parts.push('', '📌 오늘 할 일');
     todays.forEach(function (it) { parts.push(bullet_(it)); });
+  }
+
+  if (overdue.length) {
+    parts.push('', '🔴 밀린 일 ' + overdue.length + '건');
+    overdueLines_(overdue, 3).forEach(function (l) { parts.push(l); });
   }
 
   if (upcoming.length) {
@@ -489,7 +525,7 @@ function buildBriefing_(target) {
     lobby.forEach(function (line) { parts.push(line); });
   }
 
-  if (!todays.length) {
+  if (!todays.length && (upcoming.length || lobby.length)) {
     parts.splice(1, 0, '', '오늘 등록된 할 일은 없습니다.');
   }
 
@@ -559,16 +595,15 @@ function buildWeeklyReport_(target) {
   var startStr = ymd_(range.start);
   var endStr = ymd_(range.end);
 
-  var overdue = [];
+  var items = readReminders_();
+  var overdue = overdueItems_(items, todayStr);
   var thisWeek = [];   // {date, label, item}
 
-  readReminders_().forEach(function (item) {
+  items.forEach(function (item) {
     if (item.done) return;
 
     if (item.date) {
-      if (item.date < todayStr) {
-        overdue.push(item);
-      } else if (item.date >= startStr && item.date <= endStr) {
+      if (item.date >= startStr && item.date <= endStr) {
         thisWeek.push({ date: item.date, label: mdFromYmd_(item.date), item: item });
       }
       return;
@@ -585,12 +620,10 @@ function buildWeeklyReport_(target) {
 
   var parts = ['📋 주간 보고 (' + mdLabel_(range.start) + '~' + mdLabel_(range.end) + ')'];
 
+  // 주간 보고는 매일 알림과 달리 밀린 일을 전부 보여준다 (그게 보고의 목적)
   if (overdue.length) {
-    overdue.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
     parts.push('', '🔴 밀린 일 ' + overdue.length + '건');
-    overdue.forEach(function (it) {
-      parts.push('· ' + it.title + ' (' + mdFromYmd_(it.date) + ' 지남)');
-    });
+    overdueLines_(overdue, overdue.length).forEach(function (l) { parts.push(l); });
   }
 
   if (thisWeek.length) {
@@ -659,7 +692,7 @@ function lobbyWeeklyStats_(range) {
 
 /** 트리거가 매주 월요일 아침 실행하는 함수 */
 function sendWeeklyReport() {
-  var text = buildWeeklyReport_(new Date());
+  var text = buildWeeklyAndDaily_(new Date());
   if (!text) {
     Logger.log('이번 주는 보고할 내용이 없어 전송을 건너뜁니다.');
     return;
@@ -669,16 +702,44 @@ function sendWeeklyReport() {
   Logger.log('주간 보고 전송 완료:\n' + text);
 }
 
+/**
+ * 주간 보고 날 실제로 나가는 전문 = 그날의 매일 브리핑 + 주간 보고.
+ * (그날은 매일 알림이 따로 나가지 않으므로 여기에 합쳐서 보낸다)
+ */
+function buildWeeklyAndDaily_(target) {
+  var today = target || new Date();
+  return [buildBriefing_(today), buildWeeklyReport_(today)]
+    .filter(function (t) { return !!t; })
+    .join('\n\n');
+}
+
 /** 실제 전송 없이 이번 주 보고 내용만 확인 */
 function previewWeeklyReport() {
-  var text = buildWeeklyReport_(new Date());
+  var text = buildWeeklyAndDaily_(new Date());
   Logger.log(text || '(이번 주는 보고할 내용이 없습니다)');
   return text;
 }
 
-/** 트리거가 매일 아침 실행하는 함수 */
+/** 주간 보고가 예정된 요일(0=일~6=토). 주간 보고를 안 쓰면 null */
+function weeklyDay_() {
+  var v = prop_('WEEKLY_DAY', '');
+  if (v === '') return null;
+  var n = parseInt(v, 10);
+  return (isNaN(n) || n < 0 || n > 6) ? null : n;
+}
+
+/**
+ * 트리거가 매일 아침 실행하는 함수.
+ * 주간 보고가 오는 날에는 건너뛴다 — 거의 같은 내용의 카톡이 연달아 두 개 오면
+ * 그때부터 알림을 안 보게 되기 때문. 그날은 주간 보고 하나에 합쳐서 나간다.
+ */
 function sendDailyBriefing() {
-  var text = buildBriefing_(new Date());
+  var today = new Date();
+  if (weeklyDay_() === today.getDay()) {
+    Logger.log('오늘은 주간 보고가 나가는 날이라 매일 알림은 건너뜁니다.');
+    return;
+  }
+  var text = buildBriefing_(today);
   if (!text) {
     Logger.log('오늘은 보낼 내용이 없어 전송을 건너뜁니다.');
     return;
@@ -730,7 +791,9 @@ function installWeeklyTrigger() {
     .atHour(hour)
     .inTimezone(tz_())
     .create();
-  Logger.log('매주 월요일 ' + hour + '시(' + tz_() + ') 주간 보고 트리거를 설치했습니다.');
+  props_().setProperty('WEEKLY_DAY', '1');   // 월요일. 그날은 매일 알림이 비켜준다
+  Logger.log('매주 월요일 ' + hour + '시(' + tz_() + ') 주간 보고 트리거를 설치했습니다.'
+    + '\n※ 그날 아침에는 매일 알림이 따로 오지 않고, 주간 보고 하나에 합쳐서 옵니다.');
 }
 
 /** 주간 보고 끄기 */
@@ -739,6 +802,7 @@ function removeWeeklyTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'sendWeeklyReport') { ScriptApp.deleteTrigger(t); n++; }
   });
+  props_().deleteProperty('WEEKLY_DAY');
   if (n) Logger.log('기존 주간 트리거 ' + n + '개를 제거했습니다.');
 }
 
@@ -759,7 +823,9 @@ function setWeeklySchedule(dayKo, hour) {
     .atHour(h)
     .inTimezone(tz_())
     .create();
-  Logger.log('주간 보고를 매주 ' + dayKo + '요일 ' + h + '시로 설정했습니다.');
+  props_().setProperty('WEEKLY_DAY', String(DOW_KO.indexOf(String(dayKo).charAt(0))));
+  Logger.log('주간 보고를 매주 ' + dayKo + '요일 ' + h + '시로 설정했습니다.'
+    + '\n※ 그날 아침에는 매일 알림이 따로 오지 않고, 주간 보고 하나에 합쳐서 옵니다.');
 }
 
 /** 매일 아침 알림 끄기 */

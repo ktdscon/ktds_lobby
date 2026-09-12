@@ -58,7 +58,10 @@
 - `KakaoReminder.gs`는 `AppsScript_Code.gs` 없이도 동작한다 (`SHEET_NAME`/`readAll`/`SHARED_KEY` 참조는 전부 `typeof` 가드)
 - **주간 보고**(`sendWeeklyReport`, 매주 월요일 아침)는 매일 알림과 별개 트리거다. 밀린 일(날짜 지남+미완료) / 이번 주 할 일 / 강의장 운영 현황(평일 공백일·`(테스트)` 잔존 데이터, 2주치) 세 덩어리
 - **바깥에서 카톡 밀어넣기**: `POST {key, action:'sendKakao', text}` → 아무 텍스트나 내 카톡으로. Claude Code가 만든 보고서를 보낼 때 쓴다. `doPost`가 모르는 action을 `reminderDoPost_(body)`로 넘긴다 (SHARED_KEY 검사는 doPost가 이미 함)
-- 로직 검증은 Apps Script 전역(`SpreadsheetApp`/`Utilities`/`PropertiesService`)을 스텁으로 대체한 node 하니스로 했다 — 일일 브리핑 52 + 시드 일정 12 + 주간 보고 17 케이스
+- **밀린 일**(날짜 지남+미완료)은 주간 보고엔 전부, 매일 알림엔 `OVERDUE_DAILY_WINDOW`(14일) 이내 최대 3건만. 오래된 항목이 매일 울리면 알림 전체를 안 보게 되므로 자동으로 잦아들게 했다
+- **주간 보고가 나가는 날은 매일 알림을 건너뛴다**(`WEEKLY_DAY` 속성으로 판단, 트리거 실행 순서와 무관). 그날은 `buildWeeklyAndDaily_`가 둘을 하나로 합쳐 보낸다. 거의 같은 카톡 두 개가 연달아 오는 게 알림을 죽이는 지름길이라서
+- 시드에서 기간 전시는 **마감일 1줄만** 둔다. 시작일 줄을 두면 그날 이후 "밀린 일"로 2주간 따라다니는데, 전시 시작은 놓쳐도 할 게 없는 정보성 항목이라 추적할 이유가 없다
+- 로직 검증은 Apps Script 전역(`SpreadsheetApp`/`Utilities`/`PropertiesService`)을 스텁으로 대체한 node 하니스로 했다 — 일일 브리핑 52 + 시드 일정 13 + 주간 보고 25 케이스
 
 ## 로컬 개발/테스트
 
