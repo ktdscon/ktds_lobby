@@ -162,8 +162,39 @@ function kakaoAccessToken_() {
 // 카카오 메시지 전송 ("나에게 보내기")
 // ---------------------------------------------------------------------------
 
-/** 긴 글은 카카오 200자 제한 때문에 줄 단위로 쪼갠다 */
+/**
+ * 긴 글을 카카오 200자 제한에 맞춰 쪼갠다.
+ * 빈 줄로 나뉜 덩어리(오늘 할 일 / 주간 보고 / 주간 동향)를 먼저 통째로 담아보고,
+ * 한 덩어리가 혼자서도 너무 길 때만 그 안에서 줄 단위로 자른다.
+ * — 목록 한가운데가 잘려 다음 메시지로 넘어가면 읽기 나빠지기 때문.
+ */
 function chunkText_(text, limit) {
+  var blocks = String(text).split(/\n{2,}/);
+  var chunks = [];
+  var cur = '';
+  function flush() { if (cur) { chunks.push(cur); cur = ''; } }
+
+  for (var b = 0; b < blocks.length; b++) {
+    var block = blocks[b];
+    if (block.length > limit) {
+      flush();
+      chunkLines_(block, limit).forEach(function (c) { chunks.push(c); });
+      continue;
+    }
+    var joined = cur ? (cur + '\n\n' + block) : block;
+    if (joined.length > limit) {
+      flush();
+      cur = block;
+    } else {
+      cur = joined;
+    }
+  }
+  flush();
+  return chunks.length ? chunks : [''];
+}
+
+/** 한 덩어리 안에서 줄 단위로 자르기 */
+function chunkLines_(text, limit) {
   var lines = String(text).split('\n');
   var chunks = [];
   var cur = '';
@@ -188,9 +219,9 @@ function chunkText_(text, limit) {
 }
 
 /** 나에게 카카오톡 메시지 보내기. 200자를 넘으면 자동으로 여러 건으로 나눠 보낸다 */
-function sendKakaoMemo_(text) {
+function sendKakaoMemo_(text, linkOverride) {
   var token = kakaoAccessToken_();
-  var link = briefLinkUrl_();
+  var link = linkOverride || briefLinkUrl_();
   var chunks = chunkText_(text, KAKAO_TEXT_LIMIT);
 
   for (var i = 0; i < chunks.length; i++) {
@@ -202,7 +233,9 @@ function sendKakaoMemo_(text) {
       text: body,
       link: { web_url: link, mobile_web_url: link }
     };
-    if (i === chunks.length - 1) template.button_title = '안내화면 열기';
+    if (i === chunks.length - 1) {
+      template.button_title = (link === newsPageUrl_()) ? '기사 보기' : '안내화면 열기';
+    }
 
     var res = UrlFetchApp.fetch('https://kapi.kakao.com/v2/api/talk/memo/default/send', {
       method: 'post',
@@ -554,6 +587,62 @@ function todaysLobbySchedule_(todayStr) {
 }
 
 // ---------------------------------------------------------------------------
+// 주간 동향 브리핑 (Claude가 매주 만들어 GitHub에 올린 것을 읽어온다)
+// ---------------------------------------------------------------------------
+//
+// Claude Code가 매주 월요일 이른 아침에 기사를 검색·선별해서 저장소에
+// news/latest.txt (카톡용 제목 목록) 와 news/latest.html (링크 달린 전체 목록) 을
+// 커밋한다. Apps Script는 그 txt를 그대로 읽어 카톡에 붙이기만 하면 되므로
+// 양쪽 어디에도 키나 토큰이 필요 없다 (저장소가 공개라서 가능).
+
+function newsTxtUrl_() {
+  return prop_('NEWS_TXT_URL',
+    'https://raw.githubusercontent.com/ktdscon/ktds_lobby/main/news/latest.txt');
+}
+
+function newsPageUrl_() {
+  return prop_('NEWS_PAGE_URL', 'https://ktdscon.github.io/ktds_lobby/news/latest.html');
+}
+
+/** 주간 동향을 안 받고 싶으면 setNewsBriefing(false) */
+function setNewsBriefing(on) {
+  props_().setProperty('NEWS_ENABLED', on ? '1' : '0');
+  Logger.log('주간 동향 브리핑: ' + (on ? '켜짐' : '꺼짐'));
+}
+
+/**
+ * news/latest.txt 를 읽어온다.
+ * 첫 줄은 '#yyyy-MM-dd' (그 주 월요일) 마커다. 마커가 이번 주가 아니면
+ * Claude 쪽 갱신이 실패한 것이므로 **지난 주 뉴스를 보내지 않고** 건너뛴다.
+ * 네트워크 오류 등 어떤 문제가 나도 ''를 돌려준다 — 뉴스 때문에 주간 보고 전체가
+ * 실패하면 안 되기 때문.
+ */
+function fetchNewsBriefing_(mondayStr) {
+  if (prop_('NEWS_ENABLED', '1') !== '1') return '';
+  try {
+    var res = UrlFetchApp.fetch(newsTxtUrl_(), { muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) {
+      Logger.log('주간 동향 파일을 못 읽었습니다 (' + res.getResponseCode() + ') — 이번엔 건너뜁니다.');
+      return '';
+    }
+    var body = res.getContentText().replace(/^\uFEFF/, '').trim();
+    var m = body.match(/^#\s*(\d{4}-\d{2}-\d{2})\s*\n?/);
+    if (!m) {
+      Logger.log('주간 동향 파일에 날짜 마커(#yyyy-MM-dd)가 없습니다 — 건너뜁니다.');
+      return '';
+    }
+    if (mondayStr && m[1] !== mondayStr) {
+      Logger.log('주간 동향이 이번 주 것이 아닙니다 (' + m[1] + ' ≠ ' + mondayStr + ') — 건너뜁니다.');
+      return '';
+    }
+    return body.substring(m[0].length).trim();
+  } catch (err) {
+    Logger.log('주간 동향 가져오기 실패: ' + err + ' — 건너뜁니다.');
+    return '';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 주간 보고 (매주 월요일 아침)
 // ---------------------------------------------------------------------------
 
@@ -697,7 +786,8 @@ function sendWeeklyReport() {
     Logger.log('이번 주는 보고할 내용이 없어 전송을 건너뜁니다.');
     return;
   }
-  sendKakaoMemo_(text);
+  // 월요일 메시지의 버튼은 기사 목록 페이지로 — 카톡엔 제목만 가고 본문은 거기서 본다
+  sendKakaoMemo_(text, newsPageUrl_());
   props_().setProperty('LAST_WEEKLY_SENT', new Date().toISOString());
   Logger.log('주간 보고 전송 완료:\n' + text);
 }
@@ -708,7 +798,8 @@ function sendWeeklyReport() {
  */
 function buildWeeklyAndDaily_(target) {
   var today = target || new Date();
-  return [buildBriefing_(today), buildWeeklyReport_(today)]
+  var news = fetchNewsBriefing_(ymd_(weekRange_(today).start));
+  return [buildBriefing_(today), buildWeeklyReport_(today), news]
     .filter(function (t) { return !!t; })
     .join('\n\n');
 }

@@ -61,7 +61,12 @@
 - **밀린 일**(날짜 지남+미완료)은 주간 보고엔 전부, 매일 알림엔 `OVERDUE_DAILY_WINDOW`(14일) 이내 최대 3건만. 오래된 항목이 매일 울리면 알림 전체를 안 보게 되므로 자동으로 잦아들게 했다
 - **주간 보고가 나가는 날은 매일 알림을 건너뛴다**(`WEEKLY_DAY` 속성으로 판단, 트리거 실행 순서와 무관). 그날은 `buildWeeklyAndDaily_`가 둘을 하나로 합쳐 보낸다. 거의 같은 카톡 두 개가 연달아 오는 게 알림을 죽이는 지름길이라서
 - 시드에서 기간 전시는 **마감일 1줄만** 둔다. 시작일 줄을 두면 그날 이후 "밀린 일"로 2주간 따라다니는데, 전시 시작은 놓쳐도 할 게 없는 정보성 항목이라 추적할 이유가 없다
-- 로직 검증은 Apps Script 전역(`SpreadsheetApp`/`Utilities`/`PropertiesService`)을 스텁으로 대체한 node 하니스로 했다 — 일일 브리핑 52 + 시드 일정 13 + 주간 보고 25 케이스
+- **주간 동향(기사 브리핑)**은 Apps Script가 못 하는 일(검색+선별)이라 두 단계로 쪼갰다. ① 일요일 밤 Claude Code 예약 작업이 기사를 골라 `news/latest.txt`(카톡용 제목)와 `news/latest.html`(링크 목록)을 **main에** 커밋 ② 월요일 아침 Apps Script가 raw.githubusercontent에서 txt를 읽어 카톡에 붙임. 저장소가 공개라 **양쪽 다 키가 필요 없다**
+  - `latest.txt` 첫 줄 `#YYYY-MM-DD`(그 주 월요일) 마커가 안전장치다. ①이 실패하면 마커가 옛날 것이라 Apps Script가 **지난주 뉴스를 재발송하지 않고 건너뛴다**. 404·네트워크 오류에도 뉴스만 빠지고 주간 보고는 정상 발송
+  - 카톡에는 제목만(190자 = 1통), 설명과 원문 링크는 GitHub Pages 페이지에. `sendKakaoMemo_(text, linkOverride)`로 월요일만 버튼을 기사 페이지로 바꾼다
+  - `chunkText_`는 빈 줄로 나뉜 덩어리를 먼저 통째로 담는다 — 목록 한가운데가 잘리면 읽기 나빠서
+- **강의장 운영 현황은 기본 꺼짐**(`INCLUDE_LOBBY_SCHEDULE` 기본값 '0'). 구글시트 보면 되는 내용이라 카톡으로는 안 받겠다는 사용자 결정
+- 로직 검증은 Apps Script 전역(`SpreadsheetApp`/`Utilities`/`PropertiesService`)을 스텁으로 대체한 node 하니스로 했다 — 일일 52 + 시드 13 + 주간 25 + 뉴스 13 = 103 케이스
 
 ## 로컬 개발/테스트
 
