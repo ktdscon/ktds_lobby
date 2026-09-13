@@ -94,6 +94,76 @@ function kakaoAuthUrl() {
   return url;
 }
 
+// ---------------------------------------------------------------------------
+// 처음 설정 — 이 네 개만 순서대로 실행하면 끝난다
+// ---------------------------------------------------------------------------
+//
+// 코드를 편집할 필요가 없다. 값은 전부 스크립트 속성(⚙️ 프로젝트 설정 > 스크립트 속성)에
+// 넣고, 아래 함수들을 편집기 상단 드롭다운에서 골라 ▶실행 만 누르면 된다.
+//
+//   설정1_인증주소받기   →  로그에 뜬 주소를 브라우저로 열어 "동의하고 계속하기"
+//   설정2_연결하기       →  주소창의 code= 값을 속성 KAKAO_CODE 에 넣고 실행
+//   설정3_테스트발송     →  카톡이 오는지 확인
+//   설정4_알림켜기       →  매일 알림 + 주간 보고 트리거를 한 번에 설치
+
+/** 설정 1단계. 실행하면 로그에 "동의하러 가는 주소"가 나온다 */
+function 설정1_인증주소받기() {
+  return kakaoAuthUrl();
+}
+
+/**
+ * 설정 2단계. 스크립트 속성 KAKAO_CODE 에 넣어둔 인가코드로 토큰을 받아 저장한다.
+ * (속성에 없으면 무엇을 해야 하는지 알려준다)
+ */
+function 설정2_연결하기() {
+  var code = prop_('KAKAO_CODE', '');
+  if (!code) {
+    throw new Error(
+      '스크립트 속성에 KAKAO_CODE 가 없습니다.\n\n' +
+      '1) 설정1_인증주소받기 를 실행해 로그의 주소를 브라우저로 엽니다\n' +
+      '2) "동의하고 계속하기"를 누르면 주소창이 https://localhost/?code=XXXX 가 됩니다\n' +
+      '3) 왼쪽 ⚙️ 프로젝트 설정 > 스크립트 속성에서\n' +
+      '   이름 KAKAO_CODE / 값 XXXX 를 추가하고 저장한 뒤 이 함수를 다시 실행하세요\n\n' +
+      '※ 인가코드는 1회용이고 몇 분 만에 만료됩니다. 실패하면 1)부터 다시 하세요.');
+  }
+  kakaoExchangeCode(code);
+  // 인가코드는 1회용이므로 남겨둘 이유가 없다. 지워서 혼동을 막는다
+  props_().deleteProperty('KAKAO_CODE');
+  Logger.log('연결 완료. 다음으로 설정3_테스트발송 을 실행하세요.');
+}
+
+/** 설정 3단계. 지금 나에게 테스트 카톡을 보낸다 */
+function 설정3_테스트발송() {
+  sendTestKakao();
+}
+
+/** 설정 4단계. 매일 아침 알림 + 매주 월요일 주간 보고를 한 번에 켠다 */
+function 설정4_알림켜기() {
+  installDailyTrigger();
+  installWeeklyTrigger();
+  var h = parseInt(prop_('BRIEF_HOUR', '8'), 10);
+  Logger.log('\n설정이 모두 끝났습니다.\n'
+    + '· 매일 아침 ' + h + '시경 — 오늘 할 일\n'
+    + '· 월요일 아침 — 주간 보고 + 뉴스 (그날은 매일 알림 대신 하나로 합쳐서 옵니다)\n\n'
+    + '보낼 내용이 없는 날은 카톡이 오지 않습니다.\n'
+    + '시각을 바꾸려면 setBriefHour(7) 실행 후 설정4_알림켜기 를 다시 실행하세요.');
+}
+
+/** 지금 설정이 어디까지 됐는지 확인 */
+function 설정상태확인() {
+  var has = function (k) { return prop_(k, '') ? '✅' : '❌'; };
+  var triggers = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
+  Logger.log([
+    'REST API 키(KAKAO_REST_KEY) ' + has('KAKAO_REST_KEY'),
+    '카카오 연결(KAKAO_REFRESH_TOKEN) ' + has('KAKAO_REFRESH_TOKEN'),
+    '매일 알림 트리거 ' + (triggers.indexOf('sendDailyBriefing') >= 0 ? '✅' : '❌'),
+    '주간 보고 트리거 ' + (triggers.indexOf('sendWeeklyReport') >= 0 ? '✅' : '❌'),
+    '시간대 ' + tz_() + (tz_() === 'Asia/Seoul' ? ' ✅' : ' ⚠️ 서울로 바꾸세요'),
+    '',
+    '❌ 가 있으면 KAKAO_REMINDER_설정.md 의 해당 단계를 다시 하세요.'
+  ].join('\n'));
+}
+
 /** 1회 실행: 인가코드를 토큰으로 바꿔 저장 */
 function kakaoExchangeCode(code) {
   var key = prop_('KAKAO_REST_KEY', '');
